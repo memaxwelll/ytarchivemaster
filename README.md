@@ -17,6 +17,7 @@ This script automates the downloading, processing, and archiving of YouTube vide
 
 ## Screenshot
 ![alt text](https://i.ibb.co/GWNyR9B/2024-10-25-10-24-36-Desktop-and-3-more-tabs-File-Explorer.png)
+![alt text](https://i.ibb.co/MGhpmjt/2024-10-25-10-34-57-Img-BB-Bild-hochladen-Kostenloses-Bild-Hosting-Opera.png)
 
 ## Requirements
 
