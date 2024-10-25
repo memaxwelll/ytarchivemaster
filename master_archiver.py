@@ -1,12 +1,13 @@
 import os
+import json
 import subprocess
 import time
 import psutil
 from threading import Thread
 import re
-from datetime import datetime
+import requests  # New import for handling HTTP requests
 
-# ANSI color codes
+# ANSI color codes for display
 COLOR_RESET = "\033[0m"
 COLOR_TIME = "\033[94m"  # Blue for Time elapsed
 COLOR_DOWNLOADS = "\033[92m"  # Green for Videos downloaded
@@ -17,107 +18,120 @@ COLOR_SPEED = "\033[91m"  # Red for Download speed
 COLOR_BANDWIDTH = "\033[90m"  # Gray for Bandwidth used
 COLOR_DISK = "\033[93m"  # Yellow for Disk info
 
-# Define the directories for each drive option
-directories_map = {
-    '1': 'D:\\YT',
-    '2': 'E:\\YT',
-    '3': 'F:\\YT',
-    '4': 'ALL'
-}
+# Configuration file
+CONFIG_FILE = 'config.json'
+SCRIPT_URL = 'https://github.com/memaxwelll/ytarchivemaster/blob/main/master_archiver.py'
 
-# Function to prompt the user to select the drive
-def get_drive_selection():
-    print("Select the drive to update:")
-    print("1 = D:\\YT")
-    print("2 = E:\\YT")
-    print("3 = F:\\YT")
-    print("4 = ALL drives")
+# Load or create default configuration
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return {
+        '1': 'D:\\YT',
+        '2': 'E:\\YT',
+        '3': 'F:\\YT'
+    }
 
-    selection = input("Enter your choice (1, 2, 3, 4): ").strip()
+# Save configuration
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
 
-    if selection not in directories_map:
-        print("Invalid input. Please enter 1, 2, 3, or 4.")
-        return get_drive_selection()  # Ask again if the input is invalid
+# Check for updates and prompt user
+def check_for_updates():
+    try:
+        response = requests.get(SCRIPT_URL)
+        if response.status_code == 200:
+            latest_script_content = response.text
+            current_script_path = os.path.abspath(__file__)
+            
+            # Compare with the current script
+            with open(current_script_path, 'r') as current_script:
+                current_script_content = current_script.read()
+            
+            if latest_script_content != current_script_content:
+                user_input = input("An update is available. Would you like to download the latest version? (Y/N): ").strip().lower()
+                if user_input == 'y':
+                    print("Downloading the latest version...")
+                    with open(current_script_path, 'w') as current_script:
+                        current_script.write(latest_script_content)
+                    print("Update completed. Please restart the script.")
+                    exit(0)  # Exit after updating
+                else:
+                    print("You chose not to update. Continuing with the current version.")
+            else:
+                print("You are using the latest version of the script.")
+    except Exception as e:
+        print(f"Error checking for updates: {e}")
 
-    return selection
+# Modify paths interactively
+def modify_paths(config):
+    while True:
+        print("\nCurrent paths:")
+        for key, path in config.items():
+            print(f"{key} = {path}")
 
-# Function to count total videos on the drive
+        action = input("\nChoose action - (A)dd, (M)odify, (R)emove, (B)ack: ").strip().lower()
+        if action == 'a':
+            new_key = str(max(map(int, config.keys())) + 1)
+            new_path = input(f"Enter path for {new_key}: ").strip()
+            config[new_key] = new_path
+            save_config(config)  # Save changes immediately
+        elif action == 'm':
+            key_to_modify = input("Enter the number of the path to modify: ").strip()
+            if key_to_modify in config:
+                new_path = input(f"Enter new path for {key_to_modify}: ").strip()
+                config[key_to_modify] = new_path
+                save_config(config)  # Save changes immediately
+            else:
+                print("Invalid key.")
+        elif action == 'r':
+            key_to_remove = input("Enter the number of the path to remove: ").strip()
+            if key_to_remove in config:
+                del config[key_to_remove]
+                save_config(config)  # Save changes immediately
+            else:
+                print("Invalid key.")
+        elif action == 'b':
+            return config
+        else:
+            print("Invalid option. Please choose A, M, R, or B to go back.")
+
+# Get user-selected drive
+def get_drive_selection(config):
+    while True:
+        print("\nSelect the drive to update:")
+        for key, path in config.items():
+            print(f"{key} = {path}")
+        print(f"{len(config) + 1} = ALL drives")
+
+        selection = input("Enter your choice or type (C)onfigure to change paths: ").strip()
+        if selection == 'c':
+            config = modify_paths(config)
+        elif selection in config or selection == str(len(config) + 1):
+            return selection, config
+        else:
+            print("Invalid input. Please enter a valid option.")
+
+# Count total videos on the drive
 def count_total_videos(drive_path):
-    """Count the total number of videos in the library based on the downloaded video structure."""
-    video_count = 0
-    for root, dirs, files in os.walk(drive_path):
-        for file in files:
-            if file.endswith(".mp4"):  # Assuming videos are in MP4 format
-                video_count += 1
-    return video_count
+    return sum(1 for _, _, files in os.walk(drive_path) for file in files if file.endswith(".mp4"))
 
-# Function to get disk usage information
+# Get disk usage information
 def get_disk_usage(drive_path):
-    """Return disk usage info: total capacity in TB, available space in GB, and remaining percentage."""
     usage = psutil.disk_usage(drive_path)
-    total_capacity_tb = usage.total / (1024 ** 4)  # Convert to TB
-    available_gb = usage.free / (1024 ** 3)  # Convert to GB
-    remaining_percent = 100 - usage.percent  # Calculate remaining percentage
+    total_capacity_tb = usage.total / (1024 ** 4)
+    available_gb = usage.free / (1024 ** 3)
+    remaining_percent = 100 - usage.percent
     return total_capacity_tb, available_gb, remaining_percent
 
-# Function to run yt-dlp on the selected drive
-def run_yt_dlp_on_drive(drive_path):
-    channels_file = os.path.join(drive_path, 'yt-dlp-channels.txt')
-    archive_file = os.path.join(drive_path, 'yt-dlp-archive.txt')
-
-    if not os.path.exists(channels_file):
-        log_output(f"Channels file not found: {channels_file}")
-        print(f"Channels file not found: {channels_file}")
-        return
-
-    if not os.path.exists(archive_file):
-        log_output(f"Archive file not found: {archive_file}")
-        print(f"Archive file not found: {archive_file}")
-        return
-
-    print(f"Using channels file: {channels_file}")
-    print(f"Using archive file: {archive_file}")
-
-    # Define the absolute output format for the chosen drive
-    output_format = os.path.join(drive_path, "%(uploader)s (%(uploader_id)s)/%(upload_date)s - %(title)s.%(ext)s")
-
-    try:
-        # Use embedded yt-dlp commands and run it in the background
-        command = [
-            'yt-dlp',
-            '-i',                                # Ignore errors
-            '--download-archive', archive_file,   # Archive downloaded videos to prevent re-downloads
-            '-o', output_format,                 # Output format, ensure downloading to the correct drive
-            '-a', channels_file,                 # Input list of channels/videos to download
-            '--format', 'bestvideo[height=1080]+bestaudio/best[height<=1080]/best',  # Best video and audio format
-            '--merge-output-format', 'mp4',       # Merge audio and video into MP4 format
-            '--embed-thumbnail',                  # Embed thumbnail into video
-            '--embed-metadata',                   # Embed metadata into video
-            '--cookies-from-browser', 'opera',    # Use cookies from the Opera browser
-            '--continue',                         # Continue partially downloaded files
-            '--check-formats',                    # Check formats before downloading
-            '--ffmpeg-location', os.path.join(drive_path, 'ffmpeg') # Use ffmpeg from the drive path
-        ]
-
-        print(f"Running yt-dlp in the background on {drive_path}...")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        return process
-    except FileNotFoundError:
-        log_output("yt-dlp or ffmpeg not found.")
-        print("yt-dlp or ffmpeg not found.")
-    except Exception as e:
-        log_output(f"yt-dlp execution error: {e}")
-        print(f"yt-dlp execution error: {e}")
-
-# Logging function for yt-dlp output
-def log_output(line):
-    """Log yt-dlp output to yt-dlp.log file with a timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("yt-dlp.log", 'a', encoding='utf-8') as f:
-        f.write(f"{timestamp} - {line}\n")
-
-# Stats display function
+# Display statistics during download
 def display_stats(start_time, process, total_videos_initial, drive_path):
+    if process is None:
+        print("The yt-dlp process could not be started.")
+        return
+    
     videos_downloaded = 0
     processing_stage = "Waiting for process..."
     current_video = "No video currently downloading"
@@ -133,7 +147,6 @@ def display_stats(start_time, process, total_videos_initial, drive_path):
     speed_pattern = re.compile(r'(\d+\.\d+)\s*M?i?B/s')
     merger_pattern = re.compile(r'\[Merger\] Merging formats into')  # Detect the merger process
 
-    # Reserve the first 8 lines for stats display
     while process.poll() is None:
         elapsed_seconds = int(time.time() - start_time)
         elapsed_formatted = f"{elapsed_seconds // 3600:02}:{(elapsed_seconds % 3600) // 60:02}:{elapsed_seconds % 60:02}"
@@ -142,7 +155,7 @@ def display_stats(start_time, process, total_videos_initial, drive_path):
         total_bandwidth_current = psutil.net_io_counters().bytes_recv + psutil.net_io_counters().bytes_sent
         bandwidth_used_gb = (total_bandwidth_current - total_bandwidth_start) / (1024 ** 3)  # Convert to GB
 
-        # Move cursor and clear each line before updating the stat values
+        # Update stats display
         print(f"\033[H\033[K{COLOR_TIME}Time elapsed: {COLOR_RESET}{elapsed_formatted}")
         print(f"\033[2H\033[K{COLOR_DOWNLOADS}Videos downloaded: {COLOR_RESET}{videos_downloaded}")
         print(f"\033[3H\033[K{COLOR_LIBRARY}Total videos in library: {COLOR_RESET}{total_videos_in_library}")
@@ -155,17 +168,17 @@ def display_stats(start_time, process, total_videos_initial, drive_path):
         # Process yt-dlp output
         output = process.stdout.readline().strip()
         if output:
-            log_output(output)
+            output = output.decode('utf-8', errors='replace').strip()
 
-            # Display yt-dlp output in one line below stats (line 9), limit the width to prevent overflow
-            terminal_width = os.get_terminal_size().columns  # Get the terminal width
-            max_output_len = terminal_width - 10  # Leave some margin for safety
+            # Display yt-dlp output
+            terminal_width = os.get_terminal_size().columns
+            max_output_len = terminal_width - 10
             if len(output) > max_output_len:
-                output = output[:max_output_len - 3] + '...'  # Truncate the output and add "..." if it's too long
+                output = output[:max_output_len - 3] + '...'
 
-            print(f"\033[9H\033[K{output}")  # Move cursor to line 9 and clear the line for yt-dlp output
+            print(f"\033[9H\033[K{output}")  # Display yt-dlp output
 
-            # Track the download stage
+            # Track download stage
             title_match = title_pattern.search(output)
             if title_match:
                 current_video = os.path.splitext(os.path.basename(title_match.group(1)))[0]
@@ -183,9 +196,9 @@ def display_stats(start_time, process, total_videos_initial, drive_path):
             else:
                 processing_stage = "Processing"
 
-            # Detect video completion based on "Merging formats" message in the merger step
+            # Check for video completion
             if merger_pattern.search(output):
-                videos_downloaded += 1  # Only count as a completed download after merging
+                videos_downloaded += 1
                 total_videos_in_library += 1
 
                 # Update disk stats after each video is fully processed
@@ -193,31 +206,66 @@ def display_stats(start_time, process, total_videos_initial, drive_path):
 
         time.sleep(0.1)
 
-# Run yt-dlp on each drive sequentially if "ALL" is selected
-def run_yt_dlp_on_selected_drives(selection):
-    if selection == '4':  # Run on all drives sequentially
-        for drive in ['D:\\YT', 'E:\\YT', 'F:\\YT']:
+# Run yt-dlp on the selected drive
+def run_yt_dlp_on_drive(drive_path):
+    channels_file = os.path.join(drive_path, 'yt-dlp-channels.txt')
+    archive_file = os.path.join(drive_path, 'yt-dlp-archive.txt')
+    output_format = os.path.join(drive_path, "%(uploader)s (%(uploader_id)s)/%(upload_date)s - %(title)s.%(ext)s")
+
+    try:
+        command = [
+            'yt-dlp',
+            '-i',                                # Ignore errors
+            '--download-archive', archive_file,   # Archive downloaded videos
+            '-o', output_format,                 # Output format
+            '-a', channels_file,                 # Input list of channels/videos to download
+            '--format', 'bestvideo[height=1080]+bestaudio/best[height<=1080]/best',
+            '--merge-output-format', 'mp4',       # Merge audio and video
+            '--embed-thumbnail',                  # Embed thumbnail into video
+            '--embed-metadata',                   # Embed metadata into video
+            '--cookies-from-browser', 'opera',    # Use cookies from the Opera browser
+            '--continue',                         # Continue partially downloaded files
+            '--check-formats',                    # Check formats before downloading
+            '--ffmpeg-location', os.path.join(drive_path, 'ffmpeg')
+        ]
+
+        print(f"Running yt-dlp in the background on {drive_path}...")
+        process = subprocess.Popen(command, cwd=drive_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        return process
+    except FileNotFoundError:
+        print("yt-dlp or ffmpeg not found.")
+        return None
+
+# Run yt-dlp on each selected drive
+def run_yt_dlp_on_selected_drives(selection, config):
+    if selection == str(len(config) + 1):  # "ALL" option selected
+        for drive in config.values():
             process = run_yt_dlp_on_drive(drive)
             if process:
                 start_time = time.time()
                 total_videos_initial = count_total_videos(drive)
                 stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial, drive), daemon=True)
                 stats_thread.start()
-                process.wait()
+                process.wait()  # Wait for yt-dlp process to finish
                 print(f"yt-dlp process finished on {drive}.")
     else:
-        drive = directories_map[selection]
+        drive = config[selection]
         process = run_yt_dlp_on_drive(drive)
         if process:
-            # Clear terminal after the user selects the drive
             print("\033[H\033[J")  # Clear the entire screen
             start_time = time.time()
             total_videos_initial = count_total_videos(drive)
             stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial, drive), daemon=True)
             stats_thread.start()
-            process.wait()
+            process.wait()  # Wait for yt-dlp process to finish
             print(f"yt-dlp process finished on {drive}.")
 
 # Main execution
-selection = get_drive_selection()
-run_yt_dlp_on_selected_drives(selection)
+check_for_updates()  # Check for updates before proceeding
+config = load_config()  # Load paths from config file or use defaults
+selection, config = get_drive_selection(config)
+
+# Clear the screen after user selection
+print("\033[H\033[J")  # Clear the entire screen
+run_yt_dlp_on_selected_drives(selection, config)  # Run yt-dlp on selected drives

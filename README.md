@@ -4,7 +4,10 @@ This script automates the downloading, processing, and archiving of YouTube vide
 
 ## Features
 
-- **User-Defined Drive Selection**: Choose the drive where videos should be stored and processed.
+- **User-Defined Drive Selection**:
+  - Remove / add paths
+  - Automatically saves user paths to a config file
+  - Option "ALL" to update all paths one after the other
 - **Real-Time Download Statistics**:
   - Time elapsed since the script started
   - Number of videos downloaded
@@ -15,6 +18,7 @@ This script automates the downloading, processing, and archiving of YouTube vide
   - Disk information (e.g., capacity, available, remaining %)
 - **Persistent Logging**: Outputs are logged to a `yt-dlp.log` file with timestamps for future reference.
 - **Archive Management**: Uses `yt-dlp-archive.txt` to avoid re-downloading videos by tracking previously downloaded videos.
+- **Automatically searches for updates**: Searches for updates on each run and installs the update if wanted
 
 ## Screenshot
 ![alt text](https://i.ibb.co/pn9f7WN/stats.png)
