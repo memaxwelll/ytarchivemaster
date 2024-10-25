@@ -12,12 +12,13 @@ This script automates the downloading, processing, and archiving of YouTube vide
   - Current processing stage (e.g., downloading, merging, embedding metadata)
   - Current video being processed
   - Download speed and bandwidth usage
+  - Disk information (e.g., capacity, available, remaining %)
 - **Persistent Logging**: Outputs are logged to a `yt-dlp.log` file with timestamps for future reference.
 - **Archive Management**: Uses `yt-dlp-archive.txt` to avoid re-downloading videos by tracking previously downloaded videos.
 
 ## Screenshot
-![alt text](https://i.ibb.co/GWNyR9B/2024-10-25-10-24-36-Desktop-and-3-more-tabs-File-Explorer.png)
-![alt text](https://i.ibb.co/MGhpmjt/2024-10-25-10-34-57-Img-BB-Bild-hochladen-Kostenloses-Bild-Hosting-Opera.png)
+![alt text](https://i.ibb.co/pn9f7WN/stats.png)
+![alt text](https://i.ibb.co/mNmKcqS/selection.png)
 
 ## Requirements
 

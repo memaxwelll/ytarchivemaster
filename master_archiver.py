@@ -15,12 +15,13 @@ COLOR_STAGE = "\033[95m"  # Purple for Processing Stage
 COLOR_VIDEO = "\033[96m"  # Cyan for Current Video
 COLOR_SPEED = "\033[91m"  # Red for Download speed
 COLOR_BANDWIDTH = "\033[90m"  # Gray for Bandwidth used
+COLOR_DISK = "\033[93m"  # Yellow for Disk info
 
 # Define the directories for each drive option
 directories_map = {
     '1': 'D:\\YT',
     '2': 'E:\\YT',
-    '3': 'F\\YT',
+    '3': 'F:\\YT',
     '4': 'ALL'
 }
 
@@ -49,6 +50,15 @@ def count_total_videos(drive_path):
             if file.endswith(".mp4"):  # Assuming videos are in MP4 format
                 video_count += 1
     return video_count
+
+# Function to get disk usage information
+def get_disk_usage(drive_path):
+    """Return disk usage info: total capacity in TB, available space in GB, and remaining percentage."""
+    usage = psutil.disk_usage(drive_path)
+    total_capacity_tb = usage.total / (1024 ** 4)  # Convert to TB
+    available_gb = usage.free / (1024 ** 3)  # Convert to GB
+    remaining_percent = 100 - usage.percent  # Calculate remaining percentage
+    return total_capacity_tb, available_gb, remaining_percent
 
 # Function to run yt-dlp on the selected drive
 def run_yt_dlp_on_drive(drive_path):
@@ -107,7 +117,7 @@ def log_output(line):
         f.write(f"{timestamp} - {line}\n")
 
 # Stats display function
-def display_stats(start_time, process, total_videos_initial):
+def display_stats(start_time, process, total_videos_initial, drive_path):
     videos_downloaded = 0
     processing_stage = "Waiting for process..."
     current_video = "No video currently downloading"
@@ -115,9 +125,13 @@ def display_stats(start_time, process, total_videos_initial):
     total_videos_in_library = total_videos_initial
     total_bandwidth_start = psutil.net_io_counters().bytes_recv + psutil.net_io_counters().bytes_sent
 
+    # Initial disk usage information
+    total_capacity_tb, available_gb, remaining_percent = get_disk_usage(drive_path)
+
     download_pattern = re.compile(r'\[download\]\s+(\d+\.\d+)%')
     title_pattern = re.compile(r'\[download\] Destination: (.+)')
     speed_pattern = re.compile(r'(\d+\.\d+)\s*M?i?B/s')
+    merger_pattern = re.compile(r'\[Merger\] Merging formats into')  # Detect the merger process
 
     # Reserve the first 8 lines for stats display
     while process.poll() is None:
@@ -135,15 +149,21 @@ def display_stats(start_time, process, total_videos_initial):
         print(f"\033[4H\033[K{COLOR_STAGE}Processing Stage: {COLOR_RESET}{processing_stage}")
         print(f"\033[5H\033[K{COLOR_VIDEO}Video: {COLOR_RESET}{current_video}")
         print(f"\033[6H\033[K{COLOR_SPEED}Download speed: {COLOR_RESET}{download_speed}")
-        print(f"\033[7H\033[K{COLOR_BANDWIDTH}Bandwidth used: {COLOR_RESET}{bandwidth_used_gb:.2f} GB\n")
+        print(f"\033[7H\033[K{COLOR_BANDWIDTH}Bandwidth used: {COLOR_RESET}{bandwidth_used_gb:.2f} GB")
+        print(f"\033[8H\033[K{COLOR_DISK}Disk {drive_path}: Capacity {total_capacity_tb:.2f} TB | Available {available_gb:.2f} GB | Remaining {remaining_percent:.2f}%{COLOR_RESET}\n")
 
         # Process yt-dlp output
         output = process.stdout.readline().strip()
         if output:
             log_output(output)
 
-            # Display yt-dlp output below stats
-            print(f"\033[8H\033[K{output}")  # Move cursor to line 8 and clear the line for yt-dlp output
+            # Display yt-dlp output in one line below stats (line 9), limit the width to prevent overflow
+            terminal_width = os.get_terminal_size().columns  # Get the terminal width
+            max_output_len = terminal_width - 10  # Leave some margin for safety
+            if len(output) > max_output_len:
+                output = output[:max_output_len - 3] + '...'  # Truncate the output and add "..." if it's too long
+
+            print(f"\033[9H\033[K{output}")  # Move cursor to line 9 and clear the line for yt-dlp output
 
             # Track the download stage
             title_match = title_pattern.search(output)
@@ -163,9 +183,13 @@ def display_stats(start_time, process, total_videos_initial):
             else:
                 processing_stage = "Processing"
 
-            if "Deleting original file" in output and "bestvideo" in output:
-                videos_downloaded += 1
+            # Detect video completion based on "Merging formats" message in the merger step
+            if merger_pattern.search(output):
+                videos_downloaded += 1  # Only count as a completed download after merging
                 total_videos_in_library += 1
+
+                # Update disk stats after each video is fully processed
+                total_capacity_tb, available_gb, remaining_percent = get_disk_usage(drive_path)
 
         time.sleep(0.1)
 
@@ -177,7 +201,7 @@ def run_yt_dlp_on_selected_drives(selection):
             if process:
                 start_time = time.time()
                 total_videos_initial = count_total_videos(drive)
-                stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial), daemon=True)
+                stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial, drive), daemon=True)
                 stats_thread.start()
                 process.wait()
                 print(f"yt-dlp process finished on {drive}.")
@@ -189,7 +213,7 @@ def run_yt_dlp_on_selected_drives(selection):
             print("\033[H\033[J")  # Clear the entire screen
             start_time = time.time()
             total_videos_initial = count_total_videos(drive)
-            stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial), daemon=True)
+            stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial, drive), daemon=True)
             stats_thread.start()
             process.wait()
             print(f"yt-dlp process finished on {drive}.")
