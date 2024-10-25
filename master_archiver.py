@@ -5,7 +5,6 @@ import time
 import psutil
 from threading import Thread
 import re
-import requests  # New import for handling HTTP requests
 
 # ANSI color codes for display
 COLOR_RESET = "\033[0m"
@@ -20,7 +19,6 @@ COLOR_DISK = "\033[93m"  # Yellow for Disk info
 
 # Configuration file
 CONFIG_FILE = 'config.json'
-SCRIPT_URL = 'https://github.com/memaxwelll/ytarchivemaster/blob/main/master_archiver.py'
 
 # Load or create default configuration
 def load_config():
@@ -37,33 +35,6 @@ def load_config():
 def save_config(config):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
-
-# Check for updates and prompt user
-def check_for_updates():
-    try:
-        response = requests.get(SCRIPT_URL)
-        if response.status_code == 200:
-            latest_script_content = response.text
-            current_script_path = os.path.abspath(__file__)
-            
-            # Compare with the current script
-            with open(current_script_path, 'r') as current_script:
-                current_script_content = current_script.read()
-            
-            if latest_script_content != current_script_content:
-                user_input = input("An update is available. Would you like to download the latest version? (Y/N): ").strip().lower()
-                if user_input == 'y':
-                    print("Downloading the latest version...")
-                    with open(current_script_path, 'w') as current_script:
-                        current_script.write(latest_script_content)
-                    print("Update completed. Please restart the script.")
-                    exit(0)  # Exit after updating
-                else:
-                    print("You chose not to update. Continuing with the current version.")
-            else:
-                print("You are using the latest version of the script.")
-    except Exception as e:
-        print(f"Error checking for updates: {e}")
 
 # Modify paths interactively
 def modify_paths(config):
@@ -262,7 +233,6 @@ def run_yt_dlp_on_selected_drives(selection, config):
             print(f"yt-dlp process finished on {drive}.")
 
 # Main execution
-check_for_updates()  # Check for updates before proceeding
 config = load_config()  # Load paths from config file or use defaults
 selection, config = get_drive_selection(config)
 

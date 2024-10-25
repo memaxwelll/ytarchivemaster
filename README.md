@@ -18,7 +18,6 @@ This script automates the downloading, processing, and archiving of YouTube vide
   - Disk information (e.g., capacity, available, remaining %)
 - **Persistent Logging**: Outputs are logged to a `yt-dlp.log` file with timestamps for future reference.
 - **Archive Management**: Uses `yt-dlp-archive.txt` to avoid re-downloading videos by tracking previously downloaded videos.
-- **Automatically searches for updates**: Searches for updates on each run and installs the update if wanted
 
 ## Screenshot
 ![alt text](https://i.ibb.co/pn9f7WN/stats.png)
