@@ -6,11 +6,22 @@ from threading import Thread
 import re
 from datetime import datetime
 
+# ANSI color codes
+COLOR_RESET = "\033[0m"
+COLOR_TIME = "\033[94m"  # Blue for Time elapsed
+COLOR_DOWNLOADS = "\033[92m"  # Green for Videos downloaded
+COLOR_LIBRARY = "\033[93m"  # Yellow for Total videos in library
+COLOR_STAGE = "\033[95m"  # Purple for Processing Stage
+COLOR_VIDEO = "\033[96m"  # Cyan for Current Video
+COLOR_SPEED = "\033[91m"  # Red for Download speed
+COLOR_BANDWIDTH = "\033[90m"  # Gray for Bandwidth used
+
 # Define the directories for each drive option
 directories_map = {
     '1': 'D:\\YT',
     '2': 'E:\\YT',
-    '3': 'F:\\YT'
+    '3': 'F\\YT',
+    '4': 'ALL'
 }
 
 # Function to prompt the user to select the drive
@@ -19,35 +30,17 @@ def get_drive_selection():
     print("1 = D:\\YT")
     print("2 = E:\\YT")
     print("3 = F:\\YT")
+    print("4 = ALL drives")
 
-    selection = input("Enter your choice (1, 2, 3): ").strip()
+    selection = input("Enter your choice (1, 2, 3, 4): ").strip()
 
     if selection not in directories_map:
-        print("Invalid input. Please enter 1, 2, or 3.")
+        print("Invalid input. Please enter 1, 2, 3, or 4.")
         return get_drive_selection()  # Ask again if the input is invalid
 
     return selection
 
-# Get the user's drive selection
-selection = get_drive_selection()
-drive_path = directories_map[selection]  # The selected drive's YT directory
-
-# Path to ffmpeg on the chosen drive (assuming ffmpeg is in the same YT directory)
-ffmpeg_path = os.path.join(drive_path, 'ffmpeg')
-
-# Log file for yt-dlp output
-log_file = 'yt-dlp.log'
-
-# Purge the log file at the start of each run
-with open(log_file, 'w', encoding='utf-8') as f:
-    f.write("")  # Clear the file by opening it in write mode
-
-def log_output(line):
-    """Log yt-dlp output to yt-dlp.log file with a timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file, 'a', encoding='utf-8') as f:
-        f.write(f"{timestamp} - {line}\n")
-
+# Function to count total videos on the drive
 def count_total_videos(drive_path):
     """Count the total number of videos in the library based on the downloaded video structure."""
     video_count = 0
@@ -57,19 +50,8 @@ def count_total_videos(drive_path):
                 video_count += 1
     return video_count
 
-# ANSI color codes for individual stats
-COLOR_RESET = "\033[0m"
-COLOR_TIME = "\033[94m"  # Blue for Time Elapsed
-COLOR_DOWNLOADS = "\033[92m"  # Green for Videos Downloaded
-COLOR_LIBRARY = "\033[93m"  # Yellow for Total Videos in Library
-COLOR_STAGE = "\033[95m"  # Purple for Processing Stage
-COLOR_VIDEO = "\033[96m"  # Cyan for Video
-COLOR_SPEED = "\033[91m"  # Red for Download Speed
-COLOR_BANDWIDTH = "\033[90m"  # Gray for Bandwidth Used
-
-# Function to run yt-dlp in the background and collect statistics
-def run_yt_dlp(drive_path):
-    """Run yt-dlp using embedded commands for the chosen drive."""
+# Function to run yt-dlp on the selected drive
+def run_yt_dlp_on_drive(drive_path):
     channels_file = os.path.join(drive_path, 'yt-dlp-channels.txt')
     archive_file = os.path.join(drive_path, 'yt-dlp-archive.txt')
 
@@ -104,7 +86,7 @@ def run_yt_dlp(drive_path):
             '--cookies-from-browser', 'opera',    # Use cookies from the Opera browser
             '--continue',                         # Continue partially downloaded files
             '--check-formats',                    # Check formats before downloading
-            '--ffmpeg-location', ffmpeg_path      # Use ffmpeg from the drive path
+            '--ffmpeg-location', os.path.join(drive_path, 'ffmpeg') # Use ffmpeg from the drive path
         ]
 
         print(f"Running yt-dlp in the background on {drive_path}...")
@@ -117,7 +99,14 @@ def run_yt_dlp(drive_path):
         log_output(f"yt-dlp execution error: {e}")
         print(f"yt-dlp execution error: {e}")
 
-# Function to track and display statistics
+# Logging function for yt-dlp output
+def log_output(line):
+    """Log yt-dlp output to yt-dlp.log file with a timestamp."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open("yt-dlp.log", 'a', encoding='utf-8') as f:
+        f.write(f"{timestamp} - {line}\n")
+
+# Stats display function
 def display_stats(start_time, process, total_videos_initial):
     videos_downloaded = 0
     processing_stage = "Waiting for process..."
@@ -130,48 +119,37 @@ def display_stats(start_time, process, total_videos_initial):
     title_pattern = re.compile(r'\[download\] Destination: (.+)')
     speed_pattern = re.compile(r'(\d+\.\d+)\s*M?i?B/s')
 
-    # Display static part of stats initially
-    print("\033[H\033[J", end="")  # Clear terminal once at the start
-    print(f"{COLOR_TIME}Time elapsed:{COLOR_RESET} 00:00:00")
-    print(f"{COLOR_DOWNLOADS}Videos downloaded:{COLOR_RESET} 0")
-    print(f"{COLOR_LIBRARY}Total videos in library:{COLOR_RESET} {total_videos_initial}")
-    print(f"{COLOR_STAGE}Processing Stage:{COLOR_RESET} Waiting for process...")
-    print(f"{COLOR_VIDEO}Video:{COLOR_RESET} No video currently downloading")
-    print(f"{COLOR_SPEED}Download speed:{COLOR_RESET} N/A")
-    print(f"{COLOR_BANDWIDTH}Bandwidth used:{COLOR_RESET} 0.00 GB\n")
-
+    # Reserve the first 8 lines for stats display
     while process.poll() is None:
         elapsed_seconds = int(time.time() - start_time)
-        hours, remainder = divmod(elapsed_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        elapsed_formatted = f"{hours:02}:{minutes:02}:{seconds:02}"
+        elapsed_formatted = f"{elapsed_seconds // 3600:02}:{(elapsed_seconds % 3600) // 60:02}:{elapsed_seconds % 60:02}"
 
         # Calculate bandwidth used in GB
         total_bandwidth_current = psutil.net_io_counters().bytes_recv + psutil.net_io_counters().bytes_sent
         bandwidth_used_gb = (total_bandwidth_current - total_bandwidth_start) / (1024 ** 3)  # Convert to GB
 
-        # Position cursor and update each stat line with \033[K to clear the line first
-        print(f"\033[H\033[K{COLOR_TIME}Time elapsed:{COLOR_RESET} {elapsed_formatted}")
-        print(f"\033[2H\033[K{COLOR_DOWNLOADS}Videos downloaded:{COLOR_RESET} {videos_downloaded}")
-        print(f"\033[3H\033[K{COLOR_LIBRARY}Total videos in library:{COLOR_RESET} {total_videos_in_library}")
-        print(f"\033[4H\033[K{COLOR_STAGE}Processing Stage:{COLOR_RESET} {processing_stage}")
-        print(f"\033[5H\033[K{COLOR_VIDEO}Video:{COLOR_RESET} {current_video}")
-        print(f"\033[6H\033[K{COLOR_SPEED}Download speed:{COLOR_RESET} {download_speed}")
-        print(f"\033[7H\033[K{COLOR_BANDWIDTH}Bandwidth used:{COLOR_RESET} {bandwidth_used_gb:.2f} GB\n")
+        # Move cursor and clear each line before updating the stat values
+        print(f"\033[H\033[K{COLOR_TIME}Time elapsed: {COLOR_RESET}{elapsed_formatted}")
+        print(f"\033[2H\033[K{COLOR_DOWNLOADS}Videos downloaded: {COLOR_RESET}{videos_downloaded}")
+        print(f"\033[3H\033[K{COLOR_LIBRARY}Total videos in library: {COLOR_RESET}{total_videos_in_library}")
+        print(f"\033[4H\033[K{COLOR_STAGE}Processing Stage: {COLOR_RESET}{processing_stage}")
+        print(f"\033[5H\033[K{COLOR_VIDEO}Video: {COLOR_RESET}{current_video}")
+        print(f"\033[6H\033[K{COLOR_SPEED}Download speed: {COLOR_RESET}{download_speed}")
+        print(f"\033[7H\033[K{COLOR_BANDWIDTH}Bandwidth used: {COLOR_RESET}{bandwidth_used_gb:.2f} GB\n")
 
-        # Read yt-dlp output line-by-line and print it below the stats
+        # Process yt-dlp output
         output = process.stdout.readline().strip()
-
         if output:
             log_output(output)
-            print(f"\033[8H\033[K{output}")  # Move cursor to the 8th line and clear it before printing
 
-            # Process video title
+            # Display yt-dlp output below stats
+            print(f"\033[8H\033[K{output}")  # Move cursor to line 8 and clear the line for yt-dlp output
+
+            # Track the download stage
             title_match = title_pattern.search(output)
             if title_match:
                 current_video = os.path.splitext(os.path.basename(title_match.group(1)))[0]
 
-            # Process stage
             if download_pattern.search(output):
                 processing_stage = "Downloading Video"
                 speed_match = speed_pattern.search(output)
@@ -185,22 +163,37 @@ def display_stats(start_time, process, total_videos_initial):
             else:
                 processing_stage = "Processing"
 
-            # Update download count when a new video is downloaded
-            if "Deleting original file" in output:
+            if "Deleting original file" in output and "bestvideo" in output:
                 videos_downloaded += 1
                 total_videos_in_library += 1
 
         time.sleep(0.1)
 
-# Run yt-dlp and track stats
-yt_dlp_process = run_yt_dlp(drive_path)
+# Run yt-dlp on each drive sequentially if "ALL" is selected
+def run_yt_dlp_on_selected_drives(selection):
+    if selection == '4':  # Run on all drives sequentially
+        for drive in ['D:\\YT', 'E:\\YT', 'F:\\YT']:
+            process = run_yt_dlp_on_drive(drive)
+            if process:
+                start_time = time.time()
+                total_videos_initial = count_total_videos(drive)
+                stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial), daemon=True)
+                stats_thread.start()
+                process.wait()
+                print(f"yt-dlp process finished on {drive}.")
+    else:
+        drive = directories_map[selection]
+        process = run_yt_dlp_on_drive(drive)
+        if process:
+            # Clear terminal after the user selects the drive
+            print("\033[H\033[J")  # Clear the entire screen
+            start_time = time.time()
+            total_videos_initial = count_total_videos(drive)
+            stats_thread = Thread(target=display_stats, args=(start_time, process, total_videos_initial), daemon=True)
+            stats_thread.start()
+            process.wait()
+            print(f"yt-dlp process finished on {drive}.")
 
-if yt_dlp_process:
-    start_time = time.time()
-    total_videos_initial = count_total_videos(drive_path)
-
-    stats_thread = Thread(target=display_stats, args=(start_time, yt_dlp_process, total_videos_initial), daemon=True)
-    stats_thread.start()
-
-    yt_dlp_process.wait()
-    print("yt-dlp process finished.")
+# Main execution
+selection = get_drive_selection()
+run_yt_dlp_on_selected_drives(selection)
