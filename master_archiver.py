@@ -176,8 +176,14 @@ def parse_yt_dlp_output(process, drive_path):
             output_decoded = output.decode('utf-8', errors='replace').strip()  # Decode here
             log_output(output_decoded)  # Log output
 
-            # Display yt-dlp output in a single line
-            print(f"\033[9H\033[K{output_decoded}")
+            # Truncate yt-dlp output if it's too long for one line
+            terminal_width = os.get_terminal_size().columns
+            max_output_length = terminal_width - 10  # Leave a margin for aesthetics
+            if len(output_decoded) > max_output_length:
+                output_decoded = output_decoded[:max_output_length - 3] + "..."  # Truncate and add ellipsis
+
+            # Clear and update the same line for yt-dlp output
+            print(f"\033[9H\033[K{output_decoded}", end='\r')  # Move to line 9, clear line, print output
 
             with lock:
                 title_match = title_pattern.search(output_decoded)
@@ -247,4 +253,3 @@ selection, config = get_drive_selection(config)
 
 print("\033[H\033[J")  # Clear the screen
 run_yt_dlp_on_selected_drives(selection, config)
-# display_final_summary(summary_stats) # Placeholder for final summary display function
